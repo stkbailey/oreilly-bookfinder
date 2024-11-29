@@ -2,6 +2,7 @@
 import requests
 import pandas as pd
 from typing import Dict, Optional, List
+from datetime import datetime, date
 
 OREILLY_API_URL = "https://learning.oreilly.com/api/v2/search/"
 
@@ -16,30 +17,126 @@ DEFAULT_TOPICS = [
     "big-data"
 ]
 
+# Columns to include in CSV export
+CSV_COLUMNS = [
+    'title',
+    'authors',
+    'issued',
+    'publisher',
+    'description',
+    'topics',
+    'web_url',
+    'archive_id',
+    'format'
+]
+
+def format_date(d: date) -> str:
+    """Format date for O'Reilly API query."""
+    return d.strftime("%Y-%m-%d")
+
+def prepare_dataframe_for_export(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Prepare DataFrame for CSV export by cleaning and organizing columns.
+    
+    Args:
+        df: Input DataFrame from search results
+        
+    Returns:
+        Cleaned DataFrame ready for export
+    """
+    if df.empty:
+        return df
+        
+    # Create a copy to avoid modifying the original
+    export_df = df.copy()
+    
+    # Convert authors list to comma-separated string
+    if 'authors' in export_df.columns:
+        export_df['authors'] = export_df['authors'].apply(lambda x: ', '.join(x) if isinstance(x, list) else x)
+    
+    # Convert topics list to comma-separated string
+    if 'topics' in export_df.columns:
+        export_df['topics'] = export_df['topics'].apply(lambda x: ', '.join(x) if isinstance(x, list) else x)
+    
+    # Format dates
+    if 'issued' in export_df.columns:
+        export_df['issued'] = pd.to_datetime(export_df['issued']).dt.strftime('%Y-%m-%d')
+    
+    # Select and order columns that exist in the DataFrame
+    available_columns = [col for col in CSV_COLUMNS if col in export_df.columns]
+    export_df = export_df[available_columns]
+    
+    # Clean up column names for better readability
+    column_names = {
+        'title': 'Title',
+        'authors': 'Authors',
+        'issued': 'Published Date',
+        'publisher': 'Publisher',
+        'description': 'Description',
+        'topics': 'Topics',
+        'web_url': 'URL',
+        'archive_id': 'Archive ID',
+        'format': 'Format'
+    }
+    export_df = export_df.rename(columns={col: column_names.get(col, col) for col in export_df.columns})
+    
+    return export_df
+
 def search_books(
-    query: str,
+    query: str = "",
+    author: Optional[str] = None,
+    published_after: Optional[date] = None,
+    published_before: Optional[date] = None,
     limit: int = 10,
     page: int = 0,
     fields: Optional[List[str]] = None,
     topics: Optional[List[str]] = None,
-    use_default_topics: bool = True
+    use_default_topics: bool = True,
+    export_to_csv: bool = False,
+    csv_filename: str = "oreilly_books.csv"
 ) -> pd.DataFrame:
     """
     Search for books on O'Reilly's platform and return results as a DataFrame.
     
     Args:
-        query: Search query string
+        query: Search query string (default: "")
+        author: Author name to search for (default: None)
+        published_after: Only include books published after this date (default: None)
+        published_before: Only include books published before this date (default: None)
         limit: Number of results per page (default: 10)
         page: Page number for pagination (default: 0)
         fields: List of fields to include in results (default: None, includes all)
         topics: List of topics to filter by (default: None)
         use_default_topics: Whether to use default data science/AI topics when no topics provided
+        export_to_csv: Whether to export results to a CSV file (default: False)
+        csv_filename: Filename for CSV export (default: "oreilly_books.csv")
     
     Returns:
         pandas DataFrame containing search results
     """
+    # Build the search query
+    search_query = []
+    
+    if query:
+        search_query.append(query)
+        
+    if author:
+        # Add author search using O'Reilly's author syntax
+        # Wrap in quotes to handle multi-word author names
+        search_query.append(f'author:"{author}"')
+        
+    # Add date filters
+    if published_after:
+        search_query.append(f'issued:>{format_date(published_after)}')
+    if published_before:
+        search_query.append(f'issued:<{format_date(published_before)}')
+    
+    # If no query or author specified, search all books
+    if not search_query:
+        search_query.append("*")
+    
     params = {
-        "query": query,
+        "query": " ".join(search_query),
         "limit": limit,
         "page": page,
         "formats": "book"  # Only return books
@@ -79,6 +176,10 @@ def search_books(
             nested_df.columns = [f"{col}_{subcol}" for subcol in nested_df.columns]
             # Drop the original column and join the flattened columns
             df = df.drop(columns=[col]).join(nested_df)
+    
+    if export_to_csv:
+        export_df = prepare_dataframe_for_export(df)
+        export_df.to_csv(csv_filename, index=False)
     
     return df
 
