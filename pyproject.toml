@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "oreilly-bookfinder"
+version = "0.1.0"
+description = ""
+authors = ["Stephen Bailey <7850417+stkbailey@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+requests = "^2.32.3"
+click = "^8.1.7"
+pandas = "^2.2.3"
+
+[tool.poetry.scripts]
+bookfinder = "oreilly_bookfinder.cli:cli"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
